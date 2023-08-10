@@ -1,4 +1,3 @@
-
 import threading
 
 
@@ -14,6 +13,9 @@ detector = dlib.get_frontal_face_detector()
 
 face_positions = ["front", "top", "bottom", "right", "left"]
 current_position_index = 0
+
+position_hold_counter = 0
+position_hold_required = 10
 
 def guide_user(position):
     if position == "front":
@@ -44,6 +46,9 @@ some_threshold = 100000
 
 upward_tilt_sensitivity = 1.1
 
+last_capture_time = None
+capture_timeout = 1
+
 reference_img =cv2.imread("reference.jpg")
 
 
@@ -71,6 +76,8 @@ def capture_photo(position, frame, x, y, w, h):
     filename = f"reference_{position}.jpg"
     cv2.imwrite(filename, frame[y_new:y_new+h_new, x_new:x_new+w_new])
     current_position_index += 1
+    global last_capture_time
+    last_capture_time = time.time()
 
 
 def get_guidance(position):
@@ -144,9 +151,45 @@ while True:
                 distance_eyebrows_to_top = eyebrow_avg_y
                 distance_chin_to_bottom = frame.shape[0] - chin_y   # <-- Define this before using
 
+                current_time = time.time()
+                if last_capture_time and current_time - last_capture_time < capture_timeout:
+                    continue
+
+                
+
                 # Sensitivity values; you can adjust these based on testing
-                left_sensitivity = 10
-                right_sensitivity = -10
+                left_sensitivity = 15
+                right_sensitivity = -15
+
+                if distance_to_center > left_sensitivity:
+                    position_hold_counter += 1
+                else:
+                    position_hold_counter = 0  # Reset the counter if the condition isn't met
+
+                if face_positions[current_position_index] == "left" and position_hold_counter >= position_hold_required:
+                    capture_photo("left", frame, x, y, w, h)
+                    position_hold_counter = 0  # Reset the counter after capturing
+
+                # Check for right condition
+                if distance_to_center < right_sensitivity:
+                    position_hold_counter += 1
+                else:
+                    position_hold_counter = 0  # Reset the counter if the condition isn't met
+
+                if face_positions[current_position_index] == "right" and position_hold_counter >= position_hold_required:
+                    capture_photo("right", frame, x, y, w, h)
+                    position_hold_counter = 0 
+
+                # Check for bottom condition
+                if tilt_up_ratio_nose > 1.5:  # Adjusted threshold
+                    position_hold_counter += 1
+                else:
+                    position_hold_counter = 0  # Reset the counter if the condition isn't met
+
+                if face_positions[current_position_index] == "bottom" and position_hold_counter >= position_hold_required:
+                    capture_photo("bottom", frame, x, y, w, h)
+                    position_hold_counter = 0  # Reset the counter after capturing
+
 
                 if distance_to_center > left_sensitivity:
                     # Face is turned to the left
